@@ -6,6 +6,7 @@ struct FamilyHomeView: View {
     @Environment(AppModel.self) private var model
     @State private var path: [UUID] = []
     @State private var addingChild = false
+    @State private var openedLaunchScreen = false
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -38,10 +39,13 @@ struct FamilyHomeView: View {
             .sheet(isPresented: $addingChild) {
                 ChildEditorView(child: ChildProfile(name: "", age: 8, avatar: AvatarStyle(colorIndex: model.household.children.count)))
             }
-            .onAppear {
-                if model.options.parentScreen != nil, path.isEmpty, let first = model.household.children.first {
-                    path = [first.id]
-                }
+            // DEBUG launch argument: open the first child's dashboard once the
+            // sample family has loaded.
+            .task(id: model.household.children.count) {
+                guard !openedLaunchScreen, model.options.parentScreen != nil,
+                      let first = model.household.children.first else { return }
+                openedLaunchScreen = true
+                path = [first.id]
             }
         }
     }
@@ -86,6 +90,7 @@ struct ChildDashboardView: View {
     }
 
     @State private var sheet: Sheet?
+    @State private var openedLaunchScreen = false
 
     var body: some View {
         if let child = model.child(childID) {
@@ -206,6 +211,8 @@ struct ChildDashboardView: View {
             }
         }
         .onAppear {
+            guard !openedLaunchScreen else { return }
+            openedLaunchScreen = true
             switch model.options.parentScreen {
             case "school": sheet = .school
             case "editor": sheet = .edit

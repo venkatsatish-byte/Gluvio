@@ -88,7 +88,10 @@ struct KidModeView: View {
         )) {
             LowHelpView(child: child)
         }
-        .onAppear(perform: openLaunchScreen)
+        .onAppear {
+            model.updateQuests(for: child)
+            openLaunchScreen()
+        }
     }
 
     private func header(ledger: RewardsLedger, dark: Bool) -> some View {

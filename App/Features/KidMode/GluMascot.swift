@@ -63,7 +63,8 @@ struct GluMascot: View {
                 .frame(width: size, height: size * 0.92)
                 .shadow(color: colors[1].opacity(0.35), radius: 10, y: 6)
                 .overlay(face)
-                .overlay(alignment: .top) { hat.offset(y: -size * 0.28) }
+                // Sit the hat on top of the head, overlapping it slightly.
+                .overlay(alignment: .top) { hat.alignmentGuide(.top) { d in d[.bottom] - size * 0.07 } }
                 .rotationEffect(.degrees(mood == .wobbly ? (animate ? 4 : -4) : 0))
                 .offset(y: mood == .happy && animate ? -size * 0.04 : 0)
 

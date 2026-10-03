@@ -32,7 +32,7 @@ public enum FriendlyStatus: String, Equatable, Sendable {
 
     public var message: String {
         switch self {
-        case .inTheZone: return "Glu is glowing. Keep doing your thing!"
+        case .inTheZone: return "Nice and steady. Keep doing your thing!"
         case .climbing: return "Let's tell a grown-up and follow your plan."
         case .bigClimb: return "Tell a grown-up now so they can help."
         case .runningLow: return "Tell a grown-up now. Tap \"I'm low\" for your plan."
