@@ -80,3 +80,13 @@ jobs:
           git commit -m "Update Gluvio screenshots [skip ci]"
           git pull --rebase origin "${{ github.ref_name }}"
           git push origin "HEAD:${{ github.ref_name }}"
+
+  run-on-mac:
+    name: Check scripts/run-on-mac.sh with macOS's bash
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run the script the way a user would (macOS ships bash 3.2)
+        run: /bin/bash --version | head -1 && /bin/bash scripts/run-on-mac.sh --demo --watch --no-open
+

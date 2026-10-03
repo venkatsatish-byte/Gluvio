@@ -63,6 +63,20 @@ scripts/                  Build, run and screenshot script used by CI
 docs/                     Architecture, MVP scope, screenshots
 ```
 
+## Try it on your Mac
+
+With Xcode installed (free from the Mac App Store), one command builds Gluvio and
+opens it in the iPhone and Apple Watch simulators:
+
+```bash
+git clone https://github.com/venkatsatish-byte/Gluvio.git
+cd Gluvio
+./scripts/run-on-mac.sh --demo --watch
+```
+
+Leave out `--demo` to start at the welcome screen with no data, and `--watch`
+to skip the Watch app.
+
 ## Build and run
 
 Needs a Mac with Xcode 16 or newer and [XcodeGen](https://github.com/yonaskolb/XcodeGen).
