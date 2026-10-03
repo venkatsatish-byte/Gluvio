@@ -13,6 +13,8 @@ public final class HealthKitService: HealthDataProviding, @unchecked Sendable {
     static let syncPrefix = "gc-"
 
     private let store = HKHealthStore()
+    private let lock = NSLock()
+    private var glucoseObserver: HKObserverQuery?
 
     static let mgdL = HKUnit(from: "mg/dL")
     private let glucoseType = HKQuantityType(.bloodGlucose)
@@ -38,6 +40,19 @@ public final class HealthKitService: HealthDataProviding, @unchecked Sendable {
     public func requestAuthorization() async throws {
         guard isAvailable else { return }
         try await store.requestAuthorization(toShare: shareTypes, read: readTypes)
+    }
+
+    public func accessStatus() async -> HealthAccessStatus {
+        guard isAvailable else { return .unavailable }
+        do {
+            switch try await store.statusForAuthorizationRequest(toShare: shareTypes, read: readTypes) {
+            case .unnecessary: return .requested
+            case .shouldRequest, .unknown: return .notRequested
+            @unknown default: return .notRequested
+            }
+        } catch {
+            return .notRequested
+        }
     }
 
     // MARK: Glucose
@@ -179,14 +194,26 @@ public final class HealthKitService: HealthDataProviding, @unchecked Sendable {
 
     // MARK: Observing
 
-    public func startObservingGlucose(_ onChange: @escaping @Sendable () -> Void) {
+    public func startObservingGlucose(_ onChange: @escaping GlucoseChangeHandler) {
+        guard isAvailable else { return }
         let query = HKObserverQuery(sampleType: glucoseType, predicate: nil) { _, completion, error in
-            if error == nil { onChange() }
-            completion()
+            guard error == nil else {
+                completion()
+                return
+            }
+            // Tell HealthKit we're done only after the sync has finished.
+            onChange { completion() }
         }
+        let alreadyObserving: Bool = lock.withLock {
+            if glucoseObserver != nil { return true }
+            glucoseObserver = query
+            return false
+        }
+        guard !alreadyObserving else { return }
         store.execute(query)
-        // Background delivery is best effort: the system decides how often it
-        // runs, which is why the app never presents itself as an alarm.
+        // Lets iOS and watchOS wake the app when new readings arrive. The system
+        // decides how often (it's best effort), which is why Gluvio never
+        // presents itself as an alarm.
         store.enableBackgroundDelivery(for: glucoseType, frequency: .immediate) { _, _ in }
     }
 

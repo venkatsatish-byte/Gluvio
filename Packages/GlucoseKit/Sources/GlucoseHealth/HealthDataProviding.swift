@@ -15,12 +15,25 @@ public struct GlucoseChanges: Sendable {
     }
 }
 
+/// Whether Gluvio has asked for Apple Health access yet. HealthKit never says
+/// whether reading was allowed (that's private), only whether the user was asked.
+public enum HealthAccessStatus: Sendable, Equatable {
+    case unavailable
+    case notRequested
+    case requested
+}
+
+/// Called when Apple Health has new glucose data. Call `done` once the sync has
+/// finished, so the system knows the background work is complete.
+public typealias GlucoseChangeHandler = @Sendable (_ done: @escaping @Sendable () -> Void) -> Void
+
 /// Everything the app needs from Apple Health. The live implementation uses
 /// HealthKit; the demo implementation serves sample data for previews, tests,
 /// screenshots and App Review.
 public protocol HealthDataProviding: AnyObject, Sendable {
     var isAvailable: Bool { get }
     func requestAuthorization() async throws
+    func accessStatus() async -> HealthAccessStatus
     func glucoseChanges(since anchor: Data?) async throws -> GlucoseChanges
     func glucoseSamples(from start: Date, to end: Date) async throws -> [GlucoseSample]
     func save(_ reading: GlucoseSample) async throws
@@ -29,7 +42,9 @@ public protocol HealthDataProviding: AnyObject, Sendable {
     func saveWater(milliliters: Double, at date: Date) async throws
     func activity(for day: Date) async throws -> DailyActivity
     func activities(from start: Date, to end: Date) async throws -> [ActivityEvent]
-    func startObservingGlucose(_ onChange: @escaping @Sendable () -> Void)
+    /// Starts watching Apple Health for new glucose data, including in the
+    /// background. Safe to call more than once; later calls do nothing.
+    func startObservingGlucose(_ onChange: @escaping GlucoseChangeHandler)
 }
 
 /// Serves `SampleData`. Writes are kept in memory only.
@@ -48,6 +63,8 @@ public final class DemoHealthService: HealthDataProviding, @unchecked Sendable {
     public var meals: [MealEvent] { lock.withLock { dataset.meals } }
 
     public func requestAuthorization() async throws {}
+
+    public func accessStatus() async -> HealthAccessStatus { .requested }
 
     public func glucoseChanges(since anchor: Data?) async throws -> GlucoseChanges {
         lock.withLock {
@@ -85,5 +102,5 @@ public final class DemoHealthService: HealthDataProviding, @unchecked Sendable {
         lock.withLock { dataset.activities.filter { $0.start >= start && $0.start <= end } }
     }
 
-    public func startObservingGlucose(_ onChange: @escaping @Sendable () -> Void) {}
+    public func startObservingGlucose(_ onChange: @escaping GlucoseChangeHandler) {}
 }

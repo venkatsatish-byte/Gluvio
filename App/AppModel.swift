@@ -38,6 +38,8 @@ final class AppModel {
     private(set) var activities: [ActivityEvent] = []
     private(set) var todayActivity = DailyActivity(date: .now, steps: 0, exerciseMinutes: 0)
     private(set) var isRefreshing = false
+    private(set) var syncState: SyncState
+    private(set) var healthAccess: HealthAccessStatus = .notRequested
 
     let isDemo: Bool
     @ObservationIgnored let scheduler = ReminderScheduler()
@@ -47,6 +49,8 @@ final class AppModel {
     @ObservationIgnored private let sharedStore: SharedStore
     @ObservationIgnored private let connectivity = PhoneConnectivity()
     @ObservationIgnored private var lastAlertedReadingID: UUID?
+    @ObservationIgnored private var isObservingHealth = false
+    @ObservationIgnored private var refreshAgain = false
     @ObservationIgnored private var started = false
 
     init(options: LaunchOptions) {
@@ -71,6 +75,7 @@ final class AppModel {
         }
         self.profile = profile
         reminders = sharedStore.loadReminders()
+        syncState = sharedStore.loadSyncState()
 
         if options.demoMode {
             health = DemoHealthService(dataset: SampleData.make(days: 30, continuous: profile.usesCGM))
@@ -102,20 +107,44 @@ final class AppModel {
         connectivity.onMealReceived = { [weak self] meal in
             Task { @MainActor in await self?.importWatchMeal(meal) }
         }
-        health.startObservingGlucose { [weak self] in
-            Task { @MainActor in await self?.refresh() }
-        }
         connectivity.send(profile)
+        await startHealthSync()
         if profile.hasCompletedOnboarding {
             await refresh()
         }
         await scheduler.reschedule(reminders)
     }
 
+    /// Starts automatic syncing: Apple Health wakes Gluvio when new glucose
+    /// readings arrive (in the foreground or background) and the app imports
+    /// them. Runs once Health access has been requested; safe to call again.
+    func startHealthSync() async {
+        healthAccess = await health.accessStatus()
+        guard !isObservingHealth, profile.hasCompletedOnboarding, healthAccess == .requested else { return }
+        isObservingHealth = true
+        health.startObservingGlucose { [weak self] done in
+            Task { @MainActor in
+                await self?.refresh()
+                done()
+            }
+        }
+    }
+
     func refresh() async {
-        guard !isRefreshing else { return }
+        guard profile.hasCompletedOnboarding else { return }
+        guard !isRefreshing else {
+            // New data arrived mid-sync; run once more when this one finishes.
+            refreshAgain = true
+            return
+        }
         isRefreshing = true
-        defer { isRefreshing = false }
+        defer {
+            isRefreshing = false
+            if refreshAgain {
+                refreshAgain = false
+                Task { await refresh() }
+            }
+        }
 
         do {
             let changes = try await health.glucoseChanges(since: repository.healthAnchor)
@@ -124,9 +153,12 @@ final class AppModel {
             repository.healthAnchor = changes.anchor
             reload()
             checkForUrgentReading(in: changes.added)
+            syncState.recordSuccess(at: .now, imported: changes.added.count + changes.deletedIDs.count)
         } catch {
+            syncState.recordFailure(at: .now, message: "couldn't read glucose from Apple Health")
             errorMessage = "Couldn't read glucose from Apple Health. \(error.localizedDescription)"
         }
+        sharedStore.save(syncState)
 
         let now = Date.now
         if let recent = try? await health.activities(from: now.addingTimeInterval(-31 * 86_400), to: now) {
@@ -141,6 +173,7 @@ final class AppModel {
     func requestHealthAccess() async {
         do {
             try await health.requestAuthorization()
+            await startHealthSync()
             await refresh()
         } catch {
             errorMessage = "Apple Health access wasn't granted. You can change this in the Health app under Sharing → Apps."
@@ -149,6 +182,7 @@ final class AppModel {
 
     func completeOnboarding() async {
         profile.hasCompletedOnboarding = true
+        await startHealthSync()
         await refresh()
     }
 

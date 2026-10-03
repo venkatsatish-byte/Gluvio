@@ -273,3 +273,36 @@ final class ProfileAndSampleTests: XCTestCase {
         XCTAssertEqual(snapshot.latestBand, .inRange)
     }
 }
+
+final class SyncStateTests: XCTestCase {
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+    func testSummaryDescribesEachState() {
+        var state = SyncState()
+        XCTAssertEqual(state.summary(now: now), "Not synced with Apple Health yet")
+
+        state.recordSuccess(at: now.addingTimeInterval(-5 * 60), imported: 12)
+        XCTAssertEqual(state.summary(now: now), "Synced with Apple Health 5 min ago")
+        XCTAssertEqual(state.lastImportCount, 12)
+        XCTAssertFalse(state.hasFailed)
+
+        state.recordFailure(at: now, message: "Health access is off")
+        XCTAssertEqual(state.summary(now: now), "Last sync failed: Health access is off")
+        XCTAssertEqual(state.lastSuccess, now.addingTimeInterval(-5 * 60), "a failure keeps the last good sync time")
+
+        state.recordSuccess(at: now, imported: 0)
+        XCTAssertEqual(state.summary(now: now), "Synced with Apple Health just now")
+        XCTAssertNil(state.lastError)
+    }
+
+    func testSyncStateRoundTripsThroughSharedStore() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "SyncStateTests"))
+        defaults.removePersistentDomain(forName: "SyncStateTests")
+        let store = SharedStore(defaults: defaults)
+        XCTAssertEqual(store.loadSyncState(), SyncState())
+        var state = SyncState()
+        state.recordSuccess(at: now, imported: 3)
+        store.save(state)
+        XCTAssertEqual(store.loadSyncState(), state)
+    }
+}

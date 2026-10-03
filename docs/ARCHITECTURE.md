@@ -238,6 +238,22 @@ struct TargetRange: Codable {
 3. It recomputes the `DailySummary` rows for the affected days.
 4. It writes a fresh App Group snapshot and reloads the widget timelines.
 
+**Automatic sync**
+- *iPhone:* `AppDelegate` registers an `HKObserverQuery` with background
+  delivery at every launch, including the background launches iOS makes just to
+  deliver new readings (SwiftUI views don't load then). When it fires, the app
+  runs the anchored import above and only then tells HealthKit it's done, so
+  the system keeps granting background time. It also syncs whenever the app
+  comes to the front, and from **Settings → Apple Health → Sync now**.
+- *Apple Watch:* the same observer, plus a background refresh scheduled about
+  every 15 minutes, keeps the latest reading and complications current without
+  opening the app.
+- *Status:* each sync records a `SyncState` (last success, last error), shown on
+  the Today screen, in Settings and on the Watch.
+- Background timing is decided by iOS and watchOS. CGM apps may also write to
+  Apple Health late. That's why Gluvio shows each reading's age and never
+  presents itself as an alarm.
+
 **Manual entry**
 1. The app validates the value (rejects anything outside 20–600 mg/dL as a likely
    typo, and confirms values under 54 or over 300).

@@ -88,6 +88,7 @@ public struct SharedStore: @unchecked Sendable {
     private static let snapshotKey = "widgetSnapshot.v1"
     private static let profileKey = "userProfile.v1"
     private static let remindersKey = "reminders.v1"
+    private static let syncStateKey = "syncState.v1"
 
     public func loadSnapshot() -> WidgetSnapshot? { load(WidgetSnapshot.self, key: Self.snapshotKey) }
     public func save(_ snapshot: WidgetSnapshot) { save(snapshot, key: Self.snapshotKey) }
@@ -97,6 +98,9 @@ public struct SharedStore: @unchecked Sendable {
 
     public func loadReminders() -> [Reminder] { load([Reminder].self, key: Self.remindersKey) ?? Reminder.defaults }
     public func save(_ reminders: [Reminder]) { save(reminders, key: Self.remindersKey) }
+
+    public func loadSyncState() -> SyncState { load(SyncState.self, key: Self.syncStateKey) ?? SyncState() }
+    public func save(_ syncState: SyncState) { save(syncState, key: Self.syncStateKey) }
 
     private func load<T: Decodable>(_ type: T.Type, key: String) -> T? {
         guard let data = defaults.data(forKey: key) else { return nil }

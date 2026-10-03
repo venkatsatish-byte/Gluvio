@@ -11,8 +11,13 @@ import WidgetKit
 @Observable
 @MainActor
 final class WatchModel {
+    /// Shared by the SwiftUI app and the app delegate, which also runs on
+    /// background launches.
+    static let shared = WatchModel()
+
     var profile: UserProfile
     private(set) var samples: [GlucoseSample] = []
+    private(set) var syncState: SyncState
     var message: String?
     let isDemo: Bool
 
@@ -21,11 +26,14 @@ final class WatchModel {
     @ObservationIgnored private var connectivity: WatchConnectivityReceiver?
     @ObservationIgnored private var lastHapticReadingID: UUID?
     @ObservationIgnored private var started = false
+    @ObservationIgnored private var isObservingHealth = false
+    @ObservationIgnored private var isRefreshing = false
 
-    init() {
+    private init() {
         isDemo = UserDefaults.standard.bool(forKey: "demoMode")
         store = SharedStore()
         profile = store.loadProfile()
+        syncState = store.loadSyncState()
         if isDemo {
             health = DemoHealthService(dataset: SampleData.make(days: 2))
         } else {
@@ -39,20 +47,41 @@ final class WatchModel {
         connectivity = WatchConnectivityReceiver { [weak self] profile in
             Task { @MainActor in self?.apply(profile) }
         }
+        // Asking is only possible while the app is open, so it happens here
+        // rather than in the background launch path.
         try? await health.requestAuthorization()
-        health.startObservingGlucose { [weak self] in
-            Task { @MainActor in await self?.refresh() }
-        }
+        await startHealthSync()
         await refresh()
     }
 
+    /// Registers for new-glucose updates from Apple Health (foreground and
+    /// background). Needs Health access to have been requested; safe to repeat.
+    func startHealthSync() async {
+        guard !isObservingHealth, await health.accessStatus() == .requested else { return }
+        isObservingHealth = true
+        health.startObservingGlucose { [weak self] done in
+            Task { @MainActor in
+                await self?.refresh()
+                done()
+            }
+        }
+    }
+
     func refresh() async {
+        guard !isRefreshing else { return }
+        isRefreshing = true
+        defer { isRefreshing = false }
         let now = Date.now
         do {
-            samples = try await health.glucoseSamples(from: now.addingTimeInterval(-24 * 3600), to: now)
+            let latest = try await health.glucoseSamples(from: now.addingTimeInterval(-24 * 3600), to: now)
+            syncState.recordSuccess(at: now, imported: max(0, latest.count - samples.count))
+            samples = latest
+            message = nil
         } catch {
+            syncState.recordFailure(at: now, message: "couldn't read Apple Health")
             message = "Couldn't read Apple Health."
         }
+        store.save(syncState)
         store.save(WidgetSnapshot.make(from: samples, profile: profile, now: now))
         WidgetCenter.shared.reloadAllTimelines()
         playHapticIfOutOfRange(now: now)

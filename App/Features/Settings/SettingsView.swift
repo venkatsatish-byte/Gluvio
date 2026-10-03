@@ -59,14 +59,36 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    Button("Review Apple Health access") { Task { await model.requestHealthAccess() } }
+                    LabeledContent("Status", value: healthStatusText)
+                    if !model.isDemo {
+                        LabeledContent("Last sync") {
+                            Text(model.syncState.summary())
+                                .foregroundStyle(model.syncState.hasFailed ? .orange : .secondary)
+                                .multilineTextAlignment(.trailing)
+                        }
+                        Button {
+                            Task { await model.refresh() }
+                        } label: {
+                            HStack {
+                                Text("Sync now")
+                                if model.isRefreshing {
+                                    Spacer()
+                                    ProgressView()
+                                }
+                            }
+                        }
+                        .disabled(model.isRefreshing || model.healthAccess != .requested)
+                    }
+                    if model.healthAccess == .notRequested {
+                        Button("Connect Apple Health") { Task { await model.requestHealthAccess() } }
+                    }
                     if let url = URL(string: "x-apple-health://") {
                         Link("Open the Health app", destination: url)
                     }
                 } header: {
                     Text("Apple Health")
                 } footer: {
-                    Text("To change what Gluvio can read or write, open Health → your profile → Apps → Gluvio.")
+                    Text("Gluvio syncs automatically: Apple Health wakes it when new glucose readings arrive, even in the background, and it syncs again whenever you open it. iOS decides how often background syncs run. To change what Gluvio can read or write, open Health → your profile → Apps → Gluvio.")
                 }
 
                 Section("About") {
@@ -82,6 +104,17 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Settings")
+        }
+    }
+}
+
+extension SettingsView {
+    private var healthStatusText: String {
+        if model.isDemo { return "Sample data" }
+        switch model.healthAccess {
+        case .requested: return "Connected"
+        case .notRequested: return "Not connected"
+        case .unavailable: return "Not available on this device"
         }
     }
 }

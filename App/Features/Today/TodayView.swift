@@ -122,12 +122,14 @@ struct LatestReadingCard: View {
                 }
                 .font(.footnote)
                 .foregroundStyle(vm.isStale ? .orange : .secondary)
+                SyncStatusLine(summary: vm.syncSummary, failed: vm.syncFailed)
             } else {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("No readings yet").font(.title3.bold())
                     Text("Readings from your CGM or meter appear here once they reach Apple Health. You can also add one yourself.")
                         .foregroundStyle(.secondary)
                     Button("Add a reading", action: onAdd).buttonStyle(.borderedProminent)
+                    SyncStatusLine(summary: vm.syncSummary, failed: vm.syncFailed)
                 }
             }
         }
@@ -148,5 +150,17 @@ struct ErrorBanner: View {
         }
         .padding(10)
         .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+struct SyncStatusLine: View {
+    var summary: String
+    var failed: Bool
+
+    var body: some View {
+        Label(summary, systemImage: failed ? "exclamationmark.arrow.triangle.2.circlepath" : "arrow.triangle.2.circlepath")
+            .font(.caption)
+            .foregroundStyle(failed ? .orange : .secondary)
+            .accessibilityLabel(summary)
     }
 }

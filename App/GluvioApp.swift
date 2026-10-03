@@ -2,7 +2,9 @@ import SwiftUI
 
 @main
 struct GluvioApp: App {
-    @State private var host = AppHost()
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @State private var host = AppHost.shared
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
@@ -11,6 +13,23 @@ struct GluvioApp: App {
                 .environment(host.model)
                 .task(id: ObjectIdentifier(host.model)) { await host.model.start() }
         }
+        .onChange(of: scenePhase) { _, phase in
+            // Catch up whenever the app comes to the front.
+            if phase == .active { Task { await host.model.refresh() } }
+        }
+    }
+}
+
+/// iOS can launch Gluvio in the background, without any window, to deliver new
+/// Apple Health readings. SwiftUI views don't load then, so the Health observer
+/// is registered here, at launch, where it runs in both cases.
+final class AppDelegate: NSObject, UIApplicationDelegate {
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        Task { await AppHost.shared.model.startHealthSync() }
+        return true
     }
 }
 
@@ -20,9 +39,13 @@ struct GluvioApp: App {
 @Observable
 @MainActor
 final class AppHost {
+    /// One instance for the app's lifetime, shared by the SwiftUI app and the
+    /// app delegate (which runs on background launches too).
+    static let shared = AppHost()
+
     private(set) var model: AppModel
 
-    init() {
+    private init() {
         model = AppModel(options: .current)
     }
 

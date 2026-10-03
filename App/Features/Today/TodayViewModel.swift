@@ -20,6 +20,8 @@ struct TodayViewModel {
     var stepGoal: Int
     var minutesGoal: Int
     var suggestion: String
+    var syncSummary: String
+    var syncFailed: Bool
 
     @MainActor
     init(model: AppModel, now: Date = .now, calendar: Calendar = .current) {
@@ -42,6 +44,8 @@ struct TodayViewModel {
         activity = model.todayActivity
         stepGoal = model.profile.stepGoal
         minutesGoal = model.profile.activeMinutesGoal
+        syncSummary = model.isDemo ? "Sample data, not synced with Apple Health" : model.syncState.summary(now: now)
+        syncFailed = !model.isDemo && model.syncState.hasFailed
         suggestion = Coaching.suggestion(now: now, meals: model.meals, activities: model.activities,
                                          today: model.todayActivity, profile: model.profile)
     }

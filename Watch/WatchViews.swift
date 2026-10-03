@@ -103,6 +103,9 @@ struct TodayPage: View {
                     .frame(height: 70)
                     Text("Last 3 hours").font(.caption2).foregroundStyle(.secondary)
                 }
+                Text(model.isDemo ? "Sample data" : model.syncState.summary())
+                    .font(.system(size: 11))
+                    .foregroundStyle(model.syncState.hasFailed ? .orange : .secondary)
                 Text(SafetyCopy.shortDisclaimer).font(.system(size: 10)).foregroundStyle(.secondary)
             }
         }
