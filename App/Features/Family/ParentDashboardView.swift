@@ -127,9 +127,6 @@ struct ChildDashboardView: View {
                                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                                     Text(child.unit.format(latest.mgdL))
                                         .font(.system(size: 44, weight: .bold, design: .rounded))
-                                        .lineLimit(1)
-                                        .minimumScaleFactor(0.6)
-                                        .fixedSize()
                                         .foregroundStyle(stale ? Color.secondary : band.color)
                                     Text(child.unit.symbol).foregroundStyle(.secondary)
                                     if !stale, let trend = GlucoseAnalytics.trend(from: Array(readings.suffix(12))) {
@@ -137,8 +134,9 @@ struct ChildDashboardView: View {
                                             .accessibilityLabel(trend.accessibilityLabel)
                                     }
                                 }
+                                // Shrink rather than wrap or widen the page.
                                 .lineLimit(1)
-                                .fixedSize()
+                                .minimumScaleFactor(0.5)
                                 Text("\(band.title) · \(GlucoseAnalytics.ageDescription(of: latest.date))")
                                     .font(.subheadline).foregroundStyle(.secondary)
                             } else {
@@ -148,7 +146,7 @@ struct ChildDashboardView: View {
                         Spacer()
                         GluMascot(mood: MascotMood.current(latestBand: latest.map { child.targets.band(for: $0.mgdL) },
                                                             isStale: stale, todayInRange: todayStats.inRangeFraction),
-                                  colorID: model.ledger(for: child).equippedColor, size: 54)
+                                  colorID: model.ledger(for: child).equippedColor, size: 44)
                     }
                 }
 
