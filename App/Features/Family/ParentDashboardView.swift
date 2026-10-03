@@ -127,6 +127,9 @@ struct ChildDashboardView: View {
                                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                                     Text(child.unit.format(latest.mgdL))
                                         .font(.system(size: 44, weight: .bold, design: .rounded))
+                                        .lineLimit(1)
+                                        .minimumScaleFactor(0.6)
+                                        .fixedSize()
                                         .foregroundStyle(stale ? Color.secondary : band.color)
                                     Text(child.unit.symbol).foregroundStyle(.secondary)
                                     if !stale, let trend = GlucoseAnalytics.trend(from: Array(readings.suffix(12))) {
