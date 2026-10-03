@@ -40,13 +40,34 @@ final class AppModel {
     private(set) var isRefreshing = false
     private(set) var syncState: SyncState
     private(set) var healthAccess: HealthAccessStatus = .notRequested
+    /// Logged insulin for the main user (Type 1). Log only.
+    private(set) var insulin: [InsulinDose] = []
+
+    // MARK: Family (caregiver accounts)
+
+    var household: Household {
+        didSet {
+            guard household != oldValue else { return }
+            sharedStore.save(household)
+            reloadChildren()
+        }
+    }
+    var ledgers: [UUID: RewardsLedger] = [:]
+    var childReadings: [UUID: [GlucoseSample]] = [:]
+    var childMeals: [UUID: [MealEvent]] = [:]
+    var childInsulin: [UUID: [InsulinDose]] = [:]
+    /// Child whose "I'm low" screen is showing.
+    var lowHelpChildID: UUID?
 
     let isDemo: Bool
     @ObservationIgnored let scheduler = ReminderScheduler()
-    @ObservationIgnored private let options: LaunchOptions
-    @ObservationIgnored private let health: any HealthDataProviding
-    @ObservationIgnored private let repository: GlucoseRepository
-    @ObservationIgnored private let sharedStore: SharedStore
+    @ObservationIgnored let options: LaunchOptions
+    @ObservationIgnored let health: any HealthDataProviding
+    @ObservationIgnored let repository: GlucoseRepository
+    @ObservationIgnored let sharedStore: SharedStore
+    @ObservationIgnored let pinStore: PINStore
+    @ObservationIgnored let childNotifier = ChildAlertNotifier.shared
+    @ObservationIgnored var alertedReadingIDs: Set<UUID> = []
     @ObservationIgnored private let connectivity = PhoneConnectivity()
     @ObservationIgnored private var lastAlertedReadingID: UUID?
     @ObservationIgnored private var isObservingHealth = false
@@ -72,10 +93,14 @@ final class AppModel {
             profile.hasCompletedOnboarding = !options.showOnboarding
             if !options.showOnboarding { profile.acceptDisclaimer() }
             profile.careContactName = "Dr. Rivera (sample)"
+            if options.demoFamily { profile.accountType = .caregiver }
+            if let type = options.demoAccountType { profile.accountType = type }
         }
         self.profile = profile
         reminders = sharedStore.loadReminders()
         syncState = sharedStore.loadSyncState()
+        household = sharedStore.loadHousehold()
+        pinStore = PINStore(account: options.demoMode ? "demo" : "parent")
 
         if options.demoMode {
             health = DemoHealthService(dataset: SampleData.make(days: 30, continuous: profile.usesCGM))
@@ -90,6 +115,9 @@ final class AppModel {
             repository = try! GlucoseRepository(inMemory: true, defaults: defaults)
             errorMessage = "Local data couldn't be opened and will be rebuilt from Apple Health."
         }
+        var loaded: [UUID: RewardsLedger] = [:]
+        for child in household.children { loaded[child.id] = sharedStore.loadLedger(for: child.id) }
+        ledgers = loaded
     }
 
     // MARK: Lifecycle
@@ -100,6 +128,7 @@ final class AppModel {
 
         if let demo = health as? DemoHealthService {
             for meal in demo.meals { try? repository.save(meal: meal, photo: nil) }
+            if options.demoFamily { loadSampleFamily() }
         }
         if options.showUrgentDemo {
             urgentAlert = UrgentAlert(readingID: UUID(), kind: .low, mgdL: 48, readingDate: .now)
@@ -209,6 +238,34 @@ final class AppModel {
         return true
     }
 
+    /// Records insulin the user took. LOG ONLY: Gluvio never suggests an amount.
+    @discardableResult
+    func logInsulin(_ dose: InsulinDose, for child: ChildProfile? = nil) async -> Bool {
+        let key = child.map(storageKey(for:)) ?? ""
+        do {
+            try repository.save(insulin: dose, profileKey: key)
+        } catch {
+            errorMessage = "The insulin log couldn't be saved. \(error.localizedDescription)"
+            return false
+        }
+        reload()
+        // Only the main user's (or the Health-linked child's) insulin goes to Apple Health.
+        if key.isEmpty {
+            do {
+                try await health.requestAuthorization()
+                try await health.save(insulin: dose)
+            } catch {
+                errorMessage = "Insulin saved in Gluvio, but couldn't be written to Apple Health."
+            }
+        }
+        return true
+    }
+
+    func deleteInsulin(_ dose: InsulinDose) {
+        try? repository.deleteInsulin(id: dose.id)
+        reload()
+    }
+
     func deleteReading(_ sample: GlucoseSample) async {
         guard sample.source == .manual else { return }
         do {
@@ -276,15 +333,25 @@ final class AppModel {
 
     // MARK: Private
 
-    private func reload() {
+    func reload() {
         let now = Date.now
         let start = now.addingTimeInterval(-31 * 86_400)
         let end = now.addingTimeInterval(3600)
         samples = (try? repository.readings(from: start, to: end)) ?? []
         meals = (try? repository.meals(from: start, to: end)) ?? []
+        insulin = (try? repository.insulin(from: start, to: end)) ?? []
+        reloadChildren()
     }
 
     private func checkForUrgentReading(in added: [GlucoseSample]) {
+        if profile.accountType == .caregiver {
+            // Readings in Apple Health belong to the linked child: alert the parent.
+            if let child = household.child(household.healthLinkedChildID),
+               let newest = added.max(by: { $0.date < $1.date }) {
+                notifyParentIfNeeded(about: newest, child: child)
+            }
+            return
+        }
         guard let newest = added.max(by: { $0.date < $1.date }),
               Date.now.timeIntervalSince(newest.date) < 30 * 60,
               let alert = SafetyGuidance.alert(for: newest, targets: profile.targets) else { return }
@@ -300,7 +367,7 @@ final class AppModel {
         }
     }
 
-    private func updateSnapshot() {
+    func updateSnapshot() {
         guard !isDemo else { return }
         sharedStore.save(WidgetSnapshot.make(from: samples, profile: profile))
         WidgetCenter.shared.reloadAllTimelines()

@@ -11,7 +11,7 @@ struct OnboardingView: View {
     @State private var isWorking = false
 
     enum Step: Int, CaseIterable {
-        case welcome, disclaimer, targets, cgm, health, notifications
+        case welcome, who, disclaimer, targets, cgm, health, notifications
     }
 
     var body: some View {
@@ -32,7 +32,11 @@ struct OnboardingView: View {
             .toolbar {
                 if step != .welcome {
                     ToolbarItem(placement: .topBarLeading) {
-                        Button("Back") { step = Step(rawValue: step.rawValue - 1) ?? .welcome }
+                        Button("Back") {
+                        var previous = Step(rawValue: step.rawValue - 1) ?? .welcome
+                        if model.profile.accountType == .caregiver, previous == .cgm || previous == .targets { previous = .disclaimer }
+                        step = previous
+                    }
                     }
                 }
             }
@@ -49,6 +53,33 @@ struct OnboardingView: View {
                 .font(.title3).foregroundStyle(.secondary)
             Button("Explore with sample data") { host.setDemoMode(true) }
                 .padding(.top)
+
+        case .who:
+            Text("Who is Gluvio for?").font(.largeTitle.bold())
+            ForEach(AccountType.allCases) { type in
+                Button {
+                    profile.wrappedValue.accountType = type
+                    if type == .prediabetes { profile.wrappedValue.usesCGM = false }
+                } label: {
+                    HStack(spacing: 14) {
+                        Image(systemName: type.systemImage).font(.title2).frame(width: 36)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(type.title).font(.headline)
+                            Text(type.subtitle).font(.subheadline).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        if profile.wrappedValue.accountType == type {
+                            Image(systemName: "checkmark.circle.fill").foregroundStyle(.tint)
+                        }
+                    }
+                    .padding()
+                    .background(RoundedRectangle(cornerRadius: 14).fill(Color(uiColor: .secondarySystemBackground)))
+                    .overlay(RoundedRectangle(cornerRadius: 14)
+                        .stroke(profile.wrappedValue.accountType == type ? Color.accentColor : .clear, lineWidth: 2))
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(profile.wrappedValue.accountType == type ? .isSelected : [])
+            }
 
         case .disclaimer:
             Text(SafetyCopy.disclaimerTitle).font(.largeTitle.bold())
@@ -86,10 +117,17 @@ struct OnboardingView: View {
         case .health:
             Image(systemName: "heart.text.square.fill").font(.system(size: 56)).foregroundStyle(.pink)
             Text("Connect Apple Health").font(.largeTitle.bold())
+            if profile.wrappedValue.accountType == .caregiver {
+                Text("If your child's CGM or meter writes to Apple Health on this iPhone, Gluvio can import their readings. Otherwise, skip this and log readings in Gluvio.")
+                    .foregroundStyle(.secondary)
+            }
             Text("Gluvio reads:").font(.headline)
             Label("Blood glucose from your CGM, meter and manual entries", systemImage: "drop")
             Label("Steps, exercise minutes and workouts, to show how activity affects you", systemImage: "figure.walk")
             Label("Carbohydrates and water you log", systemImage: "fork.knife")
+            if profile.wrappedValue.accountType.logsInsulin {
+                Label("Insulin you log (log only, never calculated)", systemImage: "syringe")
+            }
             Text("It saves the readings, meals and water you enter here back to Apple Health. \(SafetyCopy.privacySummary)")
                 .font(.footnote).foregroundStyle(.secondary)
 
@@ -144,10 +182,14 @@ struct OnboardingView: View {
 
     private func advance() {
         if step == .disclaimer { model.profile.acceptDisclaimer() }
-        step = Step(rawValue: step.rawValue + 1) ?? .notifications
+        var next = Step(rawValue: step.rawValue + 1) ?? .notifications
+        // Caregivers set targets and monitoring per child instead.
+        if model.profile.accountType == .caregiver, next == .targets || next == .cgm { next = .health }
+        step = next
     }
 
     private func finish() async {
+        if model.profile.accountType == .caregiver { model.selectedTab = .family }
         await model.completeOnboarding()
     }
 }

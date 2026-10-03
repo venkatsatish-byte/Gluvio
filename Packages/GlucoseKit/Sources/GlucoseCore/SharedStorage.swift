@@ -89,6 +89,7 @@ public struct SharedStore: @unchecked Sendable {
     private static let profileKey = "userProfile.v1"
     private static let remindersKey = "reminders.v1"
     private static let syncStateKey = "syncState.v1"
+    private static let householdKey = "household.v1"
 
     public func loadSnapshot() -> WidgetSnapshot? { load(WidgetSnapshot.self, key: Self.snapshotKey) }
     public func save(_ snapshot: WidgetSnapshot) { save(snapshot, key: Self.snapshotKey) }
@@ -101,6 +102,17 @@ public struct SharedStore: @unchecked Sendable {
 
     public func loadSyncState() -> SyncState { load(SyncState.self, key: Self.syncStateKey) ?? SyncState() }
     public func save(_ syncState: SyncState) { save(syncState, key: Self.syncStateKey) }
+
+    public func loadHousehold() -> Household { load(Household.self, key: Self.householdKey) ?? Household() }
+    public func save(_ household: Household) { save(household, key: Self.householdKey) }
+
+    public func loadLedger(for childID: UUID) -> RewardsLedger {
+        load(RewardsLedger.self, key: Self.ledgerKey(childID)) ?? RewardsLedger()
+    }
+    public func save(_ ledger: RewardsLedger, for childID: UUID) { save(ledger, key: Self.ledgerKey(childID)) }
+    public func removeLedger(for childID: UUID) { defaults.removeObject(forKey: Self.ledgerKey(childID)) }
+
+    private static func ledgerKey(_ id: UUID) -> String { "ledger.v1.\(id.uuidString)" }
 
     private func load<T: Decodable>(_ type: T.Type, key: String) -> T? {
         guard let data = defaults.data(forKey: key) else { return nil }

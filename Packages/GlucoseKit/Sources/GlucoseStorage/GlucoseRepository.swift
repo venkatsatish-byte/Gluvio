@@ -12,8 +12,11 @@ public final class StoredReading {
     public var sourceRaw: String
     public var sourceName: String
     public var note: String
+    /// "" for the main user and Apple Health readings; a child's ID otherwise.
+    public var profileKey: String = ""
 
-    public init(_ sample: GlucoseSample) {
+    public init(_ sample: GlucoseSample, profileKey: String = "") {
+        self.profileKey = profileKey
         id = sample.id
         date = sample.date
         mgdL = sample.mgdL
@@ -51,8 +54,10 @@ public final class StoredMeal {
     public var carbsGrams: Double
     public var note: String
     @Attribute(.externalStorage) public var photo: Data?
+    public var profileKey: String = ""
 
-    public init(_ meal: MealEvent, photo: Data?) {
+    public init(_ meal: MealEvent, photo: Data?, profileKey: String = "") {
+        self.profileKey = profileKey
         id = meal.id
         date = meal.date
         kindRaw = meal.kind.rawValue
@@ -67,6 +72,30 @@ public final class StoredMeal {
     }
 }
 
+/// Logged insulin. LOG ONLY: Gluvio never calculates amounts.
+@Model
+public final class StoredInsulin {
+    @Attribute(.unique) public var id: UUID
+    public var date: Date
+    public var units: Double
+    public var kindRaw: String
+    public var note: String
+    public var profileKey: String = ""
+
+    public init(_ dose: InsulinDose, profileKey: String) {
+        id = dose.id
+        date = dose.date
+        units = dose.units
+        kindRaw = dose.kind.rawValue
+        note = dose.note
+        self.profileKey = profileKey
+    }
+
+    public var dose: InsulinDose {
+        InsulinDose(id: id, date: date, units: units, kind: InsulinKind(rawValue: kindRaw) ?? .rapid, note: note)
+    }
+}
+
 /// Local store: a mirror of Apple Health glucose plus the app's own meal
 /// records. Never synced through CloudKit (App Store Guideline 5.1.3).
 @MainActor
@@ -76,7 +105,7 @@ public final class GlucoseRepository {
     private var context: ModelContext { container.mainContext }
 
     public init(inMemory: Bool = false, defaults: UserDefaults = .standard) throws {
-        let schema = Schema([StoredReading.self, StoredMeal.self])
+        let schema = Schema([StoredReading.self, StoredMeal.self, StoredInsulin.self])
         let configuration = ModelConfiguration(
             schema: schema,
             isStoredInMemoryOnly: inMemory,
@@ -94,15 +123,15 @@ public final class GlucoseRepository {
 
     // MARK: Readings
 
-    public func readings(from start: Date, to end: Date) throws -> [GlucoseSample] {
+    public func readings(from start: Date, to end: Date, profileKey: String = "") throws -> [GlucoseSample] {
         let descriptor = FetchDescriptor<StoredReading>(
-            predicate: #Predicate { $0.date >= start && $0.date <= end },
+            predicate: #Predicate { $0.date >= start && $0.date <= end && $0.profileKey == profileKey },
             sortBy: [SortDescriptor(\.date)]
         )
         return try context.fetch(descriptor).map(\.sample)
     }
 
-    public func upsert(_ samples: [GlucoseSample]) throws {
+    public func upsert(_ samples: [GlucoseSample], profileKey: String = "") throws {
         guard let first = samples.map(\.date).min(), let last = samples.map(\.date).max() else { return }
         let descriptor = FetchDescriptor<StoredReading>(predicate: #Predicate { $0.date >= first && $0.date <= last })
         var existing = Dictionary(uniqueKeysWithValues: try context.fetch(descriptor).map { ($0.id, $0) })
@@ -117,7 +146,7 @@ public final class GlucoseRepository {
                    let moved = try context.fetch(FetchDescriptor<StoredReading>(predicate: #Predicate { $0.id == id })).first {
                     moved.update(from: sample)
                 } else {
-                    let stored = StoredReading(sample)
+                    let stored = StoredReading(sample, profileKey: profileKey)
                     context.insert(stored)
                     existing[sample.id] = stored
                 }
@@ -134,15 +163,15 @@ public final class GlucoseRepository {
 
     // MARK: Meals
 
-    public func meals(from start: Date, to end: Date) throws -> [MealEvent] {
+    public func meals(from start: Date, to end: Date, profileKey: String = "") throws -> [MealEvent] {
         let descriptor = FetchDescriptor<StoredMeal>(
-            predicate: #Predicate { $0.date >= start && $0.date <= end },
+            predicate: #Predicate { $0.date >= start && $0.date <= end && $0.profileKey == profileKey },
             sortBy: [SortDescriptor(\.date, order: .reverse)]
         )
         return try context.fetch(descriptor).map(\.meal)
     }
 
-    public func save(meal: MealEvent, photo: Data?) throws {
+    public func save(meal: MealEvent, photo: Data?, profileKey: String = "") throws {
         let id = meal.id
         if let stored = try context.fetch(FetchDescriptor<StoredMeal>(predicate: #Predicate { $0.id == id })).first {
             stored.date = meal.date
@@ -152,7 +181,7 @@ public final class GlucoseRepository {
             stored.note = meal.note
             if let photo { stored.photo = photo }
         } else {
-            context.insert(StoredMeal(meal, photo: photo))
+            context.insert(StoredMeal(meal, photo: photo, profileKey: profileKey))
         }
         try context.save()
     }
@@ -164,6 +193,43 @@ public final class GlucoseRepository {
 
     public func photo(forMeal id: UUID) -> Data? {
         try? context.fetch(FetchDescriptor<StoredMeal>(predicate: #Predicate { $0.id == id })).first?.photo
+    }
+
+    // MARK: Insulin (log only)
+
+    public func insulin(from start: Date, to end: Date, profileKey: String = "") throws -> [InsulinDose] {
+        let descriptor = FetchDescriptor<StoredInsulin>(
+            predicate: #Predicate { $0.date >= start && $0.date <= end && $0.profileKey == profileKey },
+            sortBy: [SortDescriptor(\.date)]
+        )
+        return try context.fetch(descriptor).map(\.dose)
+    }
+
+    public func save(insulin dose: InsulinDose, profileKey: String = "") throws {
+        let id = dose.id
+        if let stored = try context.fetch(FetchDescriptor<StoredInsulin>(predicate: #Predicate { $0.id == id })).first {
+            stored.date = dose.date
+            stored.units = dose.units
+            stored.kindRaw = dose.kind.rawValue
+            stored.note = dose.note
+        } else {
+            context.insert(StoredInsulin(dose, profileKey: profileKey))
+        }
+        try context.save()
+    }
+
+    public func deleteInsulin(id: UUID) throws {
+        try context.delete(model: StoredInsulin.self, where: #Predicate { $0.id == id })
+        try context.save()
+    }
+
+    /// Removes everything stored for a child profile.
+    public func deleteAll(profileKey: String) throws {
+        guard !profileKey.isEmpty else { return }
+        try context.delete(model: StoredReading.self, where: #Predicate { $0.profileKey == profileKey })
+        try context.delete(model: StoredMeal.self, where: #Predicate { $0.profileKey == profileKey })
+        try context.delete(model: StoredInsulin.self, where: #Predicate { $0.profileKey == profileKey })
+        try context.save()
     }
 }
 #endif

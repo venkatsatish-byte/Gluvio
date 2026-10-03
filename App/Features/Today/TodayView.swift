@@ -17,11 +17,12 @@ struct TodayView: View {
                     LatestReadingCard(vm: vm) { logging = .glucose }
                     statsGrid(vm)
                     Card(title: "Today") {
-                        GlucoseChart(samples: vm.samples, meals: vm.meals, activities: vm.activities,
+                        GlucoseChart(samples: vm.samples, meals: vm.meals, insulin: vm.insulin, activities: vm.activities,
                                      targets: vm.targets, unit: vm.unit, domain: vm.domain)
                             .frame(height: 220)
                         HStack(spacing: 16) {
                             Label("Meal", systemImage: "fork.knife").foregroundStyle(.orange)
+                            if vm.logsInsulin { Label("Insulin", systemImage: "syringe").foregroundStyle(.purple) }
                             Label("Activity", systemImage: "figure.walk").foregroundStyle(.mint)
                             Label("Target", systemImage: "square.fill").foregroundStyle(GlucoseBand.inRange.color.opacity(0.5))
                         }
@@ -34,7 +35,7 @@ struct TodayView: View {
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
-                    quickActions
+                    quickActions(logsInsulin: vm.logsInsulin)
                     DisclaimerFooter()
                 }
                 .padding()
@@ -63,11 +64,15 @@ struct TodayView: View {
         }
     }
 
-    private var quickActions: some View {
+    private func quickActions(logsInsulin: Bool) -> some View {
         HStack(spacing: 12) {
             quickAction("Glucose", systemImage: "drop.fill", kind: .glucose)
             quickAction("Meal", systemImage: "fork.knife", kind: .meal)
-            quickAction("Water", systemImage: "waterbottle.fill", kind: .water)
+            if logsInsulin {
+                quickAction("Insulin", systemImage: "syringe.fill", kind: .insulin)
+            } else {
+                quickAction("Water", systemImage: "waterbottle.fill", kind: .water)
+            }
         }
     }
 

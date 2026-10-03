@@ -5,6 +5,8 @@
 #   ./scripts/run-on-mac.sh            start fresh, at the welcome screen
 #   ./scripts/run-on-mac.sh --demo     open with 30 days of sample data
 #   ./scripts/run-on-mac.sh --watch    also run the Apple Watch app
+#   ./scripts/run-on-mac.sh --family   sample caregiver family and Parent Dashboard
+#   ./scripts/run-on-mac.sh --kid      sample family, straight into Kid Mode (parent PIN 1234)
 #
 # Needs Xcode (free from the Mac App Store). Installs XcodeGen with Homebrew
 # if it's missing.
@@ -13,13 +15,17 @@ cd "$(dirname "$0")/.."
 
 DEMO=NO
 WATCH=NO
+FAMILY=NO
+KID=NO
 OPEN_SIMULATOR=YES
 for arg in "$@"; do
   case "$arg" in
     --demo) DEMO=YES ;;
     --watch) WATCH=YES ;;
+    --family) DEMO=YES; FAMILY=YES ;;
+    --kid) DEMO=YES; FAMILY=YES; KID=YES ;;
     --no-open) OPEN_SIMULATOR=NO ;;   # used by CI, which has no screen
-    -h|--help) sed -n 2,10p "$0"; exit 0 ;;
+    -h|--help) sed -n 2,12p "$0"; exit 0 ;;
     *) echo "Unknown option: $arg (try --help)"; exit 1 ;;
   esac
 done
@@ -85,6 +91,8 @@ build() {
 
 launch_args=()
 [ "$DEMO" = YES ] && launch_args=(-demoMode YES)
+[ "$FAMILY" = YES ] && launch_args+=(-demoFamily YES)
+[ "$KID" = YES ] && launch_args+=(-kidMode Aarav)
 
 step "Finding an iPhone simulator"
 IFS='|' read -r IPHONE IPHONE_NAME <<< "$(pick iOS)"
@@ -125,6 +133,8 @@ fi
 cat <<'TIPS'
 
 ✔ Done. Things to try:
+  • --family: Family tab → Aarav or Meera for the Parent Dashboard, then "Start Kid Mode".
+  • --kid: Kid Mode for Aarav. Tap the lock (top right) and enter 1234 to leave.
   • Welcome screen → "Explore with sample data" to see every screen filled in,
     or go through onboarding and log readings yourself (+ button, top right).
   • Enter a reading below 54 mg/dL to see the urgent guidance screen.

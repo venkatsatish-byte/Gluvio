@@ -40,6 +40,9 @@ public protocol HealthDataProviding: AnyObject, Sendable {
     func deleteReading(id: UUID) async throws
     func save(meal: MealEvent) async throws
     func saveWater(milliliters: Double, at date: Date) async throws
+    /// Records logged insulin (log only) as Apple Health insulin delivery.
+    func save(insulin dose: InsulinDose) async throws
+    func insulinDoses(from start: Date, to end: Date) async throws -> [InsulinDose]
     func activity(for day: Date) async throws -> DailyActivity
     func activities(from start: Date, to end: Date) async throws -> [ActivityEvent]
     /// Starts watching Apple Health for new glucose data, including in the
@@ -53,6 +56,7 @@ public final class DemoHealthService: HealthDataProviding, @unchecked Sendable {
     private var dataset: SampleData.Dataset
     private var delivered = false
     private var pending: [GlucoseSample] = []
+    private var insulin: [InsulinDose] = []
 
     public init(dataset: SampleData.Dataset) {
         self.dataset = dataset
@@ -93,6 +97,14 @@ public final class DemoHealthService: HealthDataProviding, @unchecked Sendable {
     public func save(meal: MealEvent) async throws {}
 
     public func saveWater(milliliters: Double, at date: Date) async throws {}
+
+    public func save(insulin dose: InsulinDose) async throws {
+        lock.withLock { insulin.append(dose) }
+    }
+
+    public func insulinDoses(from start: Date, to end: Date) async throws -> [InsulinDose] {
+        lock.withLock { insulin.filter { $0.date >= start && $0.date <= end } }
+    }
 
     public func activity(for day: Date) async throws -> DailyActivity {
         lock.withLock { dataset.today }

@@ -14,6 +14,8 @@ struct TodayViewModel {
     var targets: TargetRange
     var samples: [GlucoseSample]
     var meals: [MealEvent]
+    var insulin: [InsulinDose]
+    var logsInsulin: Bool
     var activities: [ActivityEvent]
     var domain: ClosedRange<Date>
     var activity: DailyActivity
@@ -39,6 +41,8 @@ struct TodayViewModel {
         targets = model.profile.targets
         samples = model.samples(in: today)
         meals = model.meals.filter { $0.date >= startOfDay }
+        insulin = model.insulin.filter { $0.date >= startOfDay }
+        logsInsulin = model.profile.accountType.logsInsulin
         activities = model.activities.filter { $0.start >= startOfDay }
         domain = startOfDay...endOfDay
         activity = model.todayActivity

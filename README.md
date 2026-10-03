@@ -45,6 +45,14 @@ screenshots to `docs/screenshots/`.
 - Complications for the latest reading and time in range
 - An informational haptic for out-of-range readings; reminders mirror from iPhone
 
+**Type 1, kids and families** ([docs/FAMILY.md](docs/FAMILY.md))
+- Onboarding asks: Type 1, Type 2, Prediabetes or Parent/caregiver
+- Insulin logging for Type 1 (log only, never calculated), saved to Apple Health
+- Child profiles controlled by a parent, Kid Mode behind a parent PIN, Glu the
+  mascot, daily quests and rewards, Carb Detective (including Indian foods), an
+  "I'm low" button that shows the parent's care-plan text, a Parent Dashboard
+  and a School Mode sheet
+
 ## Project layout
 
 ```
@@ -75,7 +83,8 @@ cd Gluvio
 ```
 
 Leave out `--demo` to start at the welcome screen with no data, and `--watch`
-to skip the Watch app.
+to skip the Watch app. Use `--family` for the Parent Dashboard or `--kid` for
+Kid Mode with a sample family (parent PIN 1234).
 
 ## Build and run
 

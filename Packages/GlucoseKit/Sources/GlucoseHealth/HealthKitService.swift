@@ -22,6 +22,7 @@ public final class HealthKitService: HealthDataProviding, @unchecked Sendable {
     private let waterType = HKQuantityType(.dietaryWater)
     private let stepsType = HKQuantityType(.stepCount)
     private let exerciseType = HKQuantityType(.appleExerciseTime)
+    private let insulinType = HKQuantityType(.insulinDelivery)
 
     public init() {}
 
@@ -30,12 +31,16 @@ public final class HealthKitService: HealthDataProviding, @unchecked Sendable {
     /// Only what the app uses today. Request more (sleep, heart rate) when a
     /// feature that needs it ships; App Review checks for unused permissions.
     private var readTypes: Set<HKObjectType> {
-        [glucoseType, carbsType, waterType, stepsType, exerciseType, HKObjectType.workoutType()]
+        [glucoseType, carbsType, waterType, stepsType, exerciseType, insulinType, HKObjectType.workoutType()]
     }
 
     private var shareTypes: Set<HKSampleType> {
-        [glucoseType, carbsType, waterType]
+        [glucoseType, carbsType, waterType, insulinType]
     }
+
+    /// Glucose access alone decides whether automatic sync can run, so adding
+    /// a data type later (like insulin) doesn't pause syncing for existing users.
+    private var glucoseOnlyTypes: Set<HKSampleType> { [glucoseType] }
 
     public func requestAuthorization() async throws {
         guard isAvailable else { return }
@@ -45,7 +50,7 @@ public final class HealthKitService: HealthDataProviding, @unchecked Sendable {
     public func accessStatus() async -> HealthAccessStatus {
         guard isAvailable else { return .unavailable }
         do {
-            switch try await store.statusForAuthorizationRequest(toShare: shareTypes, read: readTypes) {
+            switch try await store.statusForAuthorizationRequest(toShare: glucoseOnlyTypes, read: glucoseOnlyTypes) {
             case .unnecessary: return .requested
             case .shouldRequest, .unknown: return .notRequested
             @unknown default: return .notRequested
@@ -157,6 +162,42 @@ public final class HealthKitService: HealthDataProviding, @unchecked Sendable {
             end: date
         )
         try await store.save(sample)
+    }
+
+    // MARK: Insulin (log only)
+
+    public func save(insulin dose: InsulinDose) async throws {
+        let reason: HKInsulinDeliveryReason = dose.kind == .rapid ? .bolus : .basal
+        let sample = HKQuantitySample(
+            type: insulinType,
+            quantity: HKQuantity(unit: .internationalUnit(), doubleValue: dose.units),
+            start: dose.date,
+            end: dose.date,
+            metadata: [
+                HKMetadataKeyInsulinDeliveryReason: reason.rawValue,
+                HKMetadataKeySyncIdentifier: Self.syncPrefix + dose.id.uuidString,
+                HKMetadataKeySyncVersion: Int(Date.now.timeIntervalSince1970 * 1000),
+                HKMetadataKeyWasUserEntered: true,
+            ]
+        )
+        try await store.save(sample)
+    }
+
+    public func insulinDoses(from start: Date, to end: Date) async throws -> [InsulinDose] {
+        let descriptor = HKSampleQueryDescriptor(
+            predicates: [.quantitySample(type: insulinType, predicate: HKQuery.predicateForSamples(withStart: start, end: end))],
+            sortDescriptors: [SortDescriptor(\.startDate)]
+        )
+        return try await descriptor.result(for: store).map { sample in
+            let raw = (sample.metadata?[HKMetadataKeyInsulinDeliveryReason] as? NSNumber)?.intValue
+            let kind: InsulinKind = raw == HKInsulinDeliveryReason.basal.rawValue ? .long : .rapid
+            return InsulinDose(
+                id: Self.sampleID(uuid: sample.uuid, metadata: sample.metadata),
+                date: sample.startDate,
+                units: sample.quantity.doubleValue(for: .internationalUnit()),
+                kind: kind
+            )
+        }
     }
 
     // MARK: Activity

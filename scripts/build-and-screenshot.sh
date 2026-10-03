@@ -115,6 +115,18 @@ shot 7-onboarding -showOnboarding YES
 limit 30 xcrun simctl ui "$IPHONE" appearance dark || true
 shot 8-today-dark -initialTab today
 limit 30 xcrun simctl ui "$IPHONE" appearance light || true
+
+# Family features (sample family, DEBUG builds only).
+shot 09-family           -demoFamily YES -initialTab family
+shot 10-child-dashboard  -demoFamily YES -parentScreen dashboard -demoKidReading high
+shot 11-school-mode      -demoFamily YES -parentScreen school -demoKidReading inRange
+shot 12-kid-happy        -demoFamily YES -kidMode Aarav -demoKidReading inRange
+shot 13-kid-sleepy-low   -demoFamily YES -kidMode Aarav -demoKidReading low
+shot 14-kid-wobbly-high  -demoFamily YES -kidMode Aarav -demoKidReading high
+shot 15-im-low           -demoFamily YES -kidMode Aarav -demoKidReading low -kidScreen low
+shot 16-quests           -demoFamily YES -kidMode Aarav -kidScreen quests
+shot 17-carb-detective   -demoFamily YES -kidMode Aarav -kidScreen carbs
+shot 18-customize-glu    -demoFamily YES -kidMode Aarav -kidScreen customize
 limit 60 xcrun simctl shutdown "$IPHONE" || true
 
 # Watch screenshot.

@@ -72,6 +72,7 @@ targets:
     entitlements:
       path: Config/Gluvio.entitlements
       properties:
+        com.apple.developer.usernotifications.time-sensitive: true
         com.apple.developer.healthkit: true
         com.apple.developer.healthkit.access: []
         com.apple.developer.healthkit.background-delivery: true

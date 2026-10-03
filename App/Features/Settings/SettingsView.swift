@@ -9,6 +9,25 @@ struct SettingsView: View {
         @Bindable var model = model
         NavigationStack {
             Form {
+                Section {
+                    Picker("Gluvio is for", selection: $model.profile.accountType) {
+                        ForEach(AccountType.allCases) { Text($0.title).tag($0) }
+                    }
+                    if model.isCaregiver {
+                        NavigationLink(model.hasParentPIN ? "Change parent PIN" : "Set parent PIN") {
+                            SetPINView()
+                        }
+                    }
+                } header: {
+                    Text("About you")
+                } footer: {
+                    if model.profile.accountType.logsInsulin {
+                        Text(InsulinCopy.logOnlyNotice)
+                    } else if model.isCaregiver {
+                        Text("The parent PIN is needed to leave Kid Mode. It's stored only on this iPhone.")
+                    }
+                }
+
                 Section("Glucose") {
                     Picker("Units", selection: $model.profile.unit) {
                         ForEach(GlucoseUnit.allCases) { Text($0.symbol).tag($0) }
@@ -102,6 +121,16 @@ struct SettingsView: View {
                     ))
                     LabeledContent("Version", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—")
                 }
+
+                #if DEBUG
+                Section {
+                    Button("Load sample family (Kid Mode testing)") { host.loadSampleFamily() }
+                } header: {
+                    Text("Developer")
+                } footer: {
+                    Text("Debug builds only. Loads two sample children with lows, highs, insulin logs and quest history. Parent PIN: 1234.")
+                }
+                #endif
             }
             .navigationTitle("Settings")
         }

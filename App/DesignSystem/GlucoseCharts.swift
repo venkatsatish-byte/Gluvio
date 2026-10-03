@@ -7,6 +7,7 @@ import SwiftUI
 struct GlucoseChart: View {
     var samples: [GlucoseSample]
     var meals: [MealEvent] = []
+    var insulin: [InsulinDose] = []
     var activities: [ActivityEvent] = []
     var targets: TargetRange
     var unit: GlucoseUnit
@@ -47,7 +48,24 @@ struct GlucoseChart: View {
                     .foregroundStyle(Color.orange.opacity(0.7))
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
                     .annotation(position: .top, alignment: .center) {
-                        Image(systemName: "fork.knife").font(.caption2).foregroundStyle(.orange)
+                        VStack(spacing: 0) {
+                            Image(systemName: "fork.knife").font(.caption2)
+                            if meal.carbsGrams > 0 { Text("\(Int(meal.carbsGrams))g").font(.system(size: 8)) }
+                        }
+                        .foregroundStyle(.orange)
+                    }
+            }
+
+            // Logged insulin (log only), marked along the bottom of the chart.
+            ForEach(insulin.filter { domain.contains($0.date) }) { dose in
+                PointMark(x: .value("Insulin", dose.date), y: .value("Bottom", yDomain.lowerBound))
+                    .symbol {
+                        Image(systemName: "syringe.fill").font(.system(size: 9)).foregroundStyle(.purple)
+                    }
+                    .annotation(position: .top, spacing: 1) {
+                        Text("\(dose.kind.shortTitle.prefix(1)) \(dose.unitsText)")
+                            .font(.system(size: 8, weight: .semibold))
+                            .foregroundStyle(.purple)
                     }
             }
 

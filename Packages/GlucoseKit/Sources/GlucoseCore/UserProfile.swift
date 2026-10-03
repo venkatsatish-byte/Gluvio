@@ -1,6 +1,7 @@
 import Foundation
 
 public struct UserProfile: Codable, Equatable, Sendable {
+    public var accountType: AccountType = .type2
     public var unit: GlucoseUnit = .mgdL
     public var targets: TargetRange = .standard
     public var usesCGM: Bool = true
@@ -27,13 +28,14 @@ public struct UserProfile: Codable, Equatable, Sendable {
     // Decoding falls back to defaults for missing keys, so adding a setting in
     // a later version never wipes the user's saved profile.
     private enum CodingKeys: String, CodingKey {
-        case unit, targets, usesCGM, stepGoal, activeMinutesGoal, careContactName, careContactPhone
+        case accountType, unit, targets, usesCGM, stepGoal, activeMinutesGoal, careContactName, careContactPhone
         case hapticAlertsEnabled, hasCompletedOnboarding, acceptedDisclaimerVersion, acceptedDisclaimerAt
     }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         let d = UserProfile()
+        accountType = try c.decodeIfPresent(AccountType.self, forKey: .accountType) ?? d.accountType
         unit = try c.decodeIfPresent(GlucoseUnit.self, forKey: .unit) ?? d.unit
         targets = try c.decodeIfPresent(TargetRange.self, forKey: .targets) ?? d.targets
         usesCGM = try c.decodeIfPresent(Bool.self, forKey: .usesCGM) ?? d.usesCGM
