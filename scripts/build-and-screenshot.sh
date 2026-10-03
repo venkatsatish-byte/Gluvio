@@ -1,0 +1,137 @@
+#!/usr/bin/env bash
+# Builds the iPhone and Watch apps for the simulator, runs them with sample
+# data and saves screenshots to docs/screenshots. Used by CI; also works
+# locally on a Mac with Xcode and XcodeGen installed.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+OUT=docs/screenshots
+LOGS=build/logs
+mkdir -p "$OUT" "$LOGS"
+BUNDLE_ID=com.example.gluvio
+
+# Runs a command, killing it after N seconds so a stuck simulator call can't
+# hang CI. Returns the command's status, or 124 on timeout.
+limit() {
+  local secs=$1; shift
+  "$@" &
+  local pid=$!
+  ( sleep "$secs"; if kill -0 "$pid" 2>/dev/null; then echo "  timed out after ${secs}s: $*"; kill -9 "$pid" 2>/dev/null; fi ) &
+  local watcher=$!
+  local status=0
+  wait "$pid" || status=$?
+  kill "$watcher" 2>/dev/null || true
+  wait "$watcher" 2>/dev/null || true
+  return $status
+}
+
+xcodegen generate
+# Report every compile error in one run instead of stopping at the first.
+defaults write com.apple.dt.Xcode IDEBuildingContinueBuildingAfterErrors -bool YES
+
+# Pick the newest available iPhone and Apple Watch simulators.
+pick() {
+  xcrun simctl list devices available -j | python3 -c '
+import json, sys
+kind = sys.argv[1]
+devices = json.load(sys.stdin)["devices"]
+candidates = []
+for runtime, items in devices.items():
+    if kind + "-" not in runtime:
+        continue
+    version = [int(x) for x in runtime.rsplit(".", 1)[-1].split("-")[1:]]
+    for d in items:
+        name = d["name"]
+        if kind == "iOS" and name.startswith("iPhone"):
+            preferred = "Pro" in name and "Max" not in name
+        elif kind == "watchOS" and name.startswith("Apple Watch"):
+            preferred = "Series" in name
+        else:
+            continue
+        candidates.append((version, preferred, d["udid"]))
+print(max(candidates)[2] if candidates else "")
+' "$1"
+}
+
+IPHONE=$(pick iOS)
+WATCH=$(pick watchOS)
+echo "iPhone simulator: $IPHONE"
+echo "Watch simulator:  ${WATCH:-none}"
+
+build() {
+  local scheme=$1 destination=$2 log=$3
+  if ! xcodebuild -project Gluvio.xcodeproj -scheme "$scheme" -configuration Debug \
+       -destination "$destination" -derivedDataPath build/DerivedData \
+       CODE_SIGNING_ALLOWED=NO build > "$LOGS/$log" 2>&1; then
+    echo "::group::$scheme build errors"
+    grep -E "error:" "$LOGS/$log" | sort -u | head -80 || true
+    grep -A3 "The following build commands failed" "$LOGS/$log" || true
+    echo "::endgroup::"
+    return 1
+  fi
+  echo "$scheme built ($(grep -c "warning:" "$LOGS/$log" || true) warning lines)"
+}
+
+build Gluvio "id=$IPHONE" ios-build.log
+if [ -n "$WATCH" ]; then
+  build GluvioWatch "id=$WATCH" watch-build.log
+else
+  build GluvioWatch "generic/platform=watchOS Simulator" watch-build.log
+fi
+
+APP=build/DerivedData/Build/Products/Debug-iphonesimulator/Gluvio.app
+echo "Embedded watch app:"; ls "$APP/Watch" 2>/dev/null || echo "  (none)"
+echo "Embedded widget extension:"; ls "$APP/PlugIns" 2>/dev/null || echo "  (none)"
+
+# iPhone screenshots.
+echo "Booting iPhone simulator"
+xcrun simctl boot "$IPHONE" 2>/dev/null || true
+limit 300 xcrun simctl bootstatus "$IPHONE" -b > /dev/null || echo "  bootstatus didn't finish; continuing"
+limit 30 xcrun simctl status_bar "$IPHONE" override --time "9:41" --batteryState charged --batteryLevel 100 --cellularBars 4 || true
+echo "Installing app"
+limit 120 xcrun simctl install "$IPHONE" "$APP"
+
+shot() {
+  local name=$1; shift
+  echo "Screenshot: $name"
+  limit 30 xcrun simctl terminate "$IPHONE" "$BUNDLE_ID" 2>/dev/null || true
+  if ! limit 60 xcrun simctl launch "$IPHONE" "$BUNDLE_ID" -demoMode YES "$@" > /dev/null; then
+    echo "  launch failed for $name"
+    return 0
+  fi
+  sleep 6
+  limit 60 xcrun simctl io "$IPHONE" screenshot --type=png "$OUT/iphone-$name.png" > /dev/null || { echo "  screenshot failed"; return 0; }
+  sips -Z 1400 "$OUT/iphone-$name.png" > /dev/null || true
+  echo "  captured iphone-$name.png"
+}
+
+shot 1-today     -initialTab today
+shot 2-trends    -initialTab trends
+shot 3-meals     -initialTab meals
+shot 4-guide     -initialTab guide
+shot 5-settings  -initialTab settings
+shot 6-urgent    -initialTab today -showUrgentDemo YES
+shot 7-onboarding -showOnboarding YES
+limit 30 xcrun simctl ui "$IPHONE" appearance dark || true
+shot 8-today-dark -initialTab today
+limit 30 xcrun simctl ui "$IPHONE" appearance light || true
+limit 60 xcrun simctl shutdown "$IPHONE" || true
+
+# Watch screenshot.
+if [ -n "$WATCH" ]; then
+  WATCH_APP=build/DerivedData/Build/Products/Debug-watchsimulator/GluvioWatch.app
+  echo "Booting Watch simulator"
+  xcrun simctl boot "$WATCH" 2>/dev/null || true
+  limit 300 xcrun simctl bootstatus "$WATCH" -b > /dev/null || echo "  bootstatus didn't finish; continuing"
+  echo "Installing Watch app"
+  if limit 120 xcrun simctl install "$WATCH" "$WATCH_APP" && \
+     limit 60 xcrun simctl launch "$WATCH" "$BUNDLE_ID.watchkitapp" -demoMode YES > /dev/null; then
+    sleep 8
+    limit 60 xcrun simctl io "$WATCH" screenshot --type=png "$OUT/watch-1-latest.png" > /dev/null \
+      && echo "  captured watch-1-latest.png" || echo "  watch screenshot failed"
+  else
+    echo "  watch install or launch failed"
+  fi
+fi
+
+ls -la "$OUT"
