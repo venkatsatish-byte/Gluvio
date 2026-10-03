@@ -137,6 +137,8 @@ struct ChildDashboardView: View {
                                             .accessibilityLabel(trend.accessibilityLabel)
                                     }
                                 }
+                                .lineLimit(1)
+                                .fixedSize()
                                 Text("\(band.title) · \(GlucoseAnalytics.ageDescription(of: latest.date))")
                                     .font(.subheadline).foregroundStyle(.secondary)
                             } else {
