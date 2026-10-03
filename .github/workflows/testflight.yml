@@ -1,0 +1,33 @@
+name: TestFlight
+
+# Run from the Actions tab: TestFlight → Run workflow.
+on:
+  workflow_dispatch:
+
+jobs:
+  upload:
+    name: Build, sign and upload to TestFlight
+    runs-on: macos-15
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    env:
+      TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+      BUNDLE_ID: ${{ vars.APP_BUNDLE_ID }}
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+      BUILD_NUMBER: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Archive and upload
+        run: ./scripts/testflight.sh
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: testflight-logs
+          path: build/*.log

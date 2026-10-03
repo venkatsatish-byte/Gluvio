@@ -97,16 +97,23 @@ swift run glucose-report                 # 30 days of sample CGM data
 swift run glucose-report --fingerstick --mmol
 ```
 
+## Test on your iPhone and Apple Watch
+
+The **TestFlight** workflow (Actions → TestFlight → Run workflow) builds, signs
+and uploads Gluvio to TestFlight. It needs a one-time setup in your Apple
+Developer account: see [docs/TESTFLIGHT.md](docs/TESTFLIGHT.md).
+
 ## Design documents
 
 | Document | Contents |
 |---|---|
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | MVVM architecture, targets, data models, HealthKit and sync strategy, safety design |
 | [docs/MVP_SCOPE.md](docs/MVP_SCOPE.md) | MVP, v1 and v2 scope, App Store review notes, open questions |
+| [docs/TESTFLIGHT.md](docs/TESTFLIGHT.md) | One-time setup for TestFlight builds on your iPhone and Apple Watch |
 
 ## Before shipping
 
 - Clinical review of all safety and guidance wording (`SafetyCopy`, `GuideContent`)
 - Regulatory review if real-time CGM alerts are added
-- App icon and App Store assets
+- App Store screenshots and description (the app icon is in `App/Assets.xcassets`; `scripts/make-icon.py` redraws it)
 - A privacy policy URL (required for HealthKit apps)
